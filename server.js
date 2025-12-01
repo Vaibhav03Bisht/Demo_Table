@@ -4,6 +4,7 @@ const path = require("path");
 
 const app = express();
 
+// Basic Auth Credentials
 app.use(
   basicAuth({
     users: { "testuser": "testpass" },
@@ -11,10 +12,10 @@ app.use(
   })
 );
 
+// Serve JSON file
 app.get("/data.json", (req, res) => {
   res.sendFile(path.join(__dirname, "data.json"));
 });
 
-app.listen(3000, () => {
-  console.log("Server running on port 3000");
-});
+// Render requires listening on process.env.PORT
+const PORT = pr
