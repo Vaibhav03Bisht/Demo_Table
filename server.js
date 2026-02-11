@@ -16,45 +16,28 @@ app.use(
 );
 
 // -------------------------------
-// Encoding Diagnostic Endpoint
+// Filtered Data Endpoint
 // -------------------------------
 app.get("/data.json", (req, res) => {
-  const originalUrl = req.originalUrl;
-  const paramRaw = req.query.params || null;
+  const authorParam = req.query.author;
 
-  let encodingStatus = "No params provided";
-  let onceDecoded = null;
-  let twiceDecoded = null;
-
-  if (paramRaw) {
-    try {
-      onceDecoded = decodeURIComponent(paramRaw);
-      twiceDecoded = decodeURIComponent(onceDecoded);
-
-      if (paramRaw === onceDecoded) {
-        encodingStatus = "Not encoded";
-      } else if (onceDecoded === twiceDecoded) {
-        encodingStatus = "Encoded once";
-      } else {
-        encodingStatus = "Double encoded";
-      }
-    } catch (err) {
-      encodingStatus = "Encoding detection failed";
-    }
-  }
-
-  // Load your existing JSON file
+  // Load book data from file
   const rawData = fs.readFileSync(path.join(__dirname, "Data.json"), "utf-8");
   const jsonData = JSON.parse(rawData);
+  const books = jsonData.books || [];
+
+  // Filter books if author param is provided
+  const filteredBooks = authorParam
+    ? books.filter(book =>
+        book.author.toLowerCase() === decodeURIComponent(authorParam).toLowerCase()
+      )
+    : books;
 
   res.json({
     status: "ok",
-    encodingAnalysis: encodingStatus,
-    originalRequestUrl: originalUrl,
-    receivedParam: paramRaw,
-    decodedOnce: onceDecoded,
-    decodedTwice: twiceDecoded,
-    books: jsonData.books
+    totalResults: filteredBooks.length,
+    filteredBy: authorParam || "none",
+    books: filteredBooks
   });
 });
 
@@ -62,7 +45,6 @@ app.get("/data.json", (req, res) => {
 // Start Server
 // -------------------------------
 const PORT = process.env.PORT || 3000;
-
 app.listen(PORT, () => {
   console.log("Server running on port", PORT);
 });
