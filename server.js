@@ -1,50 +1,68 @@
-const express = require("express");
-const basicAuth = require("express-basic-auth");
-const path = require("path");
-const fs = require("fs");
-
-const app = express();
-
-// -------------------------------
-// Basic Auth Credentials
-// -------------------------------
-app.use(
-  basicAuth({
-    users: { testuser: "testpass" },
-    challenge: true,
-  })
-);
-
-// -------------------------------
-// Filtered Data Endpoint
-// -------------------------------
 app.get("/data.json", (req, res) => {
-  const authorParam = req.query.author;
+  const paramRaw = req.query.params;
 
-  // Load book data from file
+  if (!paramRaw) {
+    return res.status(400).json({ error: "Missing 'params' query parameter." });
+  }
+
+  // Decode steps
+  let onceDecoded, twiceDecoded, encodingStatus;
+  try {
+    onceDecoded = decodeURIComponent(paramRaw);
+    twiceDecoded = decodeURIComponent(onceDecoded);
+
+    if (onceDecoded !== twiceDecoded) {
+      return res.status(500).json({
+        error: "Double encoding detected — request rejected.",
+        receivedParam: paramRaw,
+        decodedOnce: onceDecoded,
+        decodedTwice: twiceDecoded
+      });
+    }
+
+    encodingStatus = "Single encoding detected — processing...";
+  } catch (err) {
+    return res.status(400).json({ error: "Failed to decode param", detail: err.message });
+  }
+
+  // Accept format like: params=outerkey=innerkey=value
+  const segments = onceDecoded.split("=");
+
+  if (segments.length < 2) {
+    return res.status(400).json({ error: "Invalid 'params' format. Expected at least key=value." });
+  }
+
+  // Support nested param styles
+  const [outerKey, ...rest] = segments;
+  const field = rest.length === 2 ? rest[0] : outerKey;
+  const value = rest.length === 2 ? rest[1] : rest[0];
+
+  // Load book data
   const rawData = fs.readFileSync(path.join(__dirname, "Data.json"), "utf-8");
   const jsonData = JSON.parse(rawData);
   const books = jsonData.books || [];
 
-  // Filter books if author param is provided
-  const filteredBooks = authorParam
-    ? books.filter(book =>
-        book.author.toLowerCase() === decodeURIComponent(authorParam).toLowerCase()
-      )
-    : books;
+  const filtered = books.filter(book => {
+    const bookValue = book[field];
+
+    if (typeof bookValue === "string") {
+      return bookValue.toLowerCase() === value.toLowerCase();
+    } else if (typeof bookValue === "number") {
+      return bookValue.toString() === value;
+    } else if (typeof bookValue === "boolean") {
+      return bookValue.toString().toLowerCase() === value.toLowerCase();
+    } else if (Array.isArray(bookValue)) {
+      return bookValue.map(v => v.toLowerCase()).includes(value.toLowerCase());
+    }
+
+    return false;
+  });
 
   res.json({
     status: "ok",
-    totalResults: filteredBooks.length,
-    filteredBy: authorParam || "none",
-    books: filteredBooks
+    encodingStatus,
+    paramParsed: { outerKey, field, value },
+    totalResults: filtered.length,
+    books: filtered
   });
-});
-
-// -------------------------------
-// Start Server
-// -------------------------------
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log("Server running on port", PORT);
 });
